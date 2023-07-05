@@ -88,6 +88,39 @@ def test_okta_config():
     assert config.okta_api_token == "test-token"
 
     # Assert on default configurations
+    assert config.okta_private_key is None
+    assert config.okta_client_id is None
+    assert config.okta_kid is None
+    assert config.ingest_users is True
+    assert config.ingest_groups is True
+    assert config.ingest_group_membership is True
+    assert config.okta_profile_to_username_attr == "email"
+    assert config.okta_profile_to_username_regex == "(.*)"
+    assert config.okta_profile_to_group_name_attr == "name"
+    assert config.okta_profile_to_group_name_regex == "(.*)"
+    assert config.include_deprovisioned_users is False
+    assert config.include_suspended_users is False
+    assert config.page_size == 100
+    assert config.delay_seconds == 0.01
+
+# Same test as above for OAuth 2.0
+def test_okta_config_oauth():
+    config = OktaConfig.parse_obj(
+        dict(okta_domain="test.okta.com",
+             okta_private_key="test-jwk",
+             okta_client_id="test-client-id",
+             okta_kid="test-kid"
+        )
+    )
+
+    # Sanity on required configurations
+    assert config.okta_domain == "test.okta.com"
+    assert config.okta_private_key == "test-jwk"
+    assert config.okta_client_id == "test-client-id"
+    assert config.okta_kid == "test-kid"
+
+    # Assert on default configurations
+    assert config.okta_api_token is None
     assert config.ingest_users is True
     assert config.ingest_groups is True
     assert config.ingest_group_membership is True

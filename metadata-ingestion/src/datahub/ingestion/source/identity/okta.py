@@ -58,9 +58,24 @@ class OktaConfig(StatefulIngestionConfigBase, ConfigModel):
     okta_domain: str = Field(
         description="The location of your Okta Domain, without a protocol. Can be found in Okta Developer console. e.g. dev-33231928.okta.com",
     )
-    # Required: An API token generated from Okta.
-    okta_api_token: str = Field(
-        description="An API token generated for the DataHub application inside your Okta Developer Console. e.g. 00be4R_M2MzDqXawbWgfKGpKee0kuEOfX1RCQSRx00",
+    # Optional: An API token generated from Okta. One of okta_api_token or okta_private_key must be set.
+    okta_api_token: Optional[str] = Field(
+        default=None,
+        description="An API token generated for the DataHub application inside your Okta Developer Console. e.g. 00be4R_M2MzDqXawbWgfKGpKee0kuEOfX1RCQSRx00. One of okta_api_token or okta_private_key must be set.",
+    )
+
+    # Optional: JWKS configuration for authentication. One of okta_api_token or okta_private_key must be set.
+    okta_private_key: Optional[str] = Field(
+        default=None,
+        description="A private in JWK or PEM format for OAuth 2.0 access. One of okta_api_token or okta_private_key must be set. If a private key is provided, okta_client_id and okta_kid must also be set. For further details, see https://developer.okta.com/docs/guides/implement-oauth-for-okta-serviceapp/main/."
+    )
+    okta_client_id: Optional[str] = Field(
+        default=None,
+        description="Client ID for the OAuth 2.0 application. Must be set if okta_private_key is set."
+    )
+    okta_kid: Optional[str] = Field(
+        default=None,
+        description="Key ID for the private RSA key. Must be set if okta_private_key is set."
     )
 
     # Optional: Whether to ingest users, groups, or both.
@@ -162,6 +177,24 @@ class OktaConfig(StatefulIngestionConfigBase, ConfigModel):
             raise ConfigurationError(
                 "Only one of okta_groups_filter or okta_groups_search can be set"
             )
+        return v
+
+    @validator("okta_api_token")
+    def okta_token_one_of_api_or_oauth(cls, v, values):
+        if v and values["okta_private_key"]:
+            raise ConfigurationError(
+                "Only one of okta_api_token or okta_private_key can be set"
+            )
+        elif not v and not values["okta_private_key"]:
+            raise ConfigurationError(
+                "One of okta_api_token or okta_private_key must be set"
+            )
+        return v
+
+    @validator("okta_api_token")
+    def okta_api_token_has_client_id_and_kid(cls, v, values):
+        if v and not (values["okta_client_id"] and values["okta_kid"]):
+            raise ConfigurationError("When using okta_api_token, okta_client_id and okta_kid must be set")
         return v
 
 
@@ -413,11 +446,22 @@ class OktaSource(StatefulIngestionSourceBase):
 
     # Instantiates Okta SDK Client.
     def _create_okta_client(self):
-        config = {
-            "orgUrl": f"https://{self.config.okta_domain}",
-            "token": f"{self.config.okta_api_token}",
-            "raiseException": True,
-        }
+        if self.config.okta_api_token:
+            config = {
+                "orgUrl": f"https://{self.config.okta_domain}",
+                "token": f"{self.config.okta_api_token}",
+                "raiseException": True,
+            }
+        else:
+            config = {
+                "orgUrl": f"https://{self.config.okta_domain}",
+                "authorizationMode": "PrivateKey",
+                "clientId": f"{self.config.okta_client_id}",
+                "scopes": ["okta.users.read", "okta.groups.read"],
+                "kid": f"{self.config.okta_kid}",
+                "privateKey": f"{self.config.okta_private_key}",
+                "raiseException": True,
+            }
         return OktaClient(config)
 
     # Retrieves all Okta Group Objects in batches.
